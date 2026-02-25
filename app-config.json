@@ -1,0 +1,35 @@
+{
+  "appName": "FUXA",
+  "windowTitle": "FUXA - Process Visualization",
+  "logoPath": "fuxa-logo.ico",
+  "versionText": "v1.3.0",
+  "loadingMessages": {
+    "startingServer": "正在启动 {AppName} 服务器...",
+    "initializingBrowser": "正在初始化浏览器...",
+    "loadingApp": "正在加载 {AppName}...",
+    "serverRestarting": "服务器连接丢失，正在重新启动...",
+    "reloadingApp": "正在重新加载 {AppName}..."
+  },
+  "windowSettings": {
+    "width": 1400,
+    "height": 900,
+    "minWidth": 800,
+    "minHeight": 600
+  },
+  "colors": {
+    "backgroundColor": "#F5F7FA",
+    "backgroundColor2": "#EBF0F5",
+    "textColor": "#3C3C3C",
+    "versionColor": "#969696",
+    "spinnerColor": "#007BFF",
+    "spinnerBackgroundColor": "#DCDCDC"
+  },
+  "serverSettings": {
+    "nodePath": "nodejs/node.exe",
+    "serverScript": "server/main.js",
+    "port": 1881,
+    "host": "localhost",
+    "stopServerOnExit": false,
+    "askBeforeStopServer": true
+  }
+}
