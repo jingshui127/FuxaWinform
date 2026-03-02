@@ -10,20 +10,35 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DefaultItemExcludes>$(DefaultItemExcludes);FUXA-Desktop-CS\**\*.cs</DefaultItemExcludes>
+    
+    <!-- 程序集信息 -->
     <AssemblyName>FuxaWinform</AssemblyName>
     <RootNamespace>FuxaWinform</RootNamespace>
     <Product>FuxaWinform</Product>
     <AssemblyTitle>FuxaWinform - FUXA Desktop Client</AssemblyTitle>
-    <Description>A Windows desktop client for FUXA process visualization platform</Description>
-    <Company>FuxaWinform</Company>
-    <Authors>FuxaWinform Team</Authors>
-    <Version>1.3.1</Version>
-    <FileVersion>1.3.1</FileVersion>
-    <InformationalVersion>1.3.1</InformationalVersion>
+    <Description>A Windows desktop client for FUXA process visualization platform with Stardust monitoring</Description>
+    <Company>科控物联</Company>
+    <Authors>科控物联开发团队</Authors>
+    <Copyright>©2024-2026 科控物联</Copyright>
+    
+    <!-- 版本号自动生成：主版本.年.月日 -->
+    <VersionPrefix>1.0</VersionPrefix>
+    <VersionSuffix>$([System.DateTime]::Now.ToString(`yyyy.MMdd`))</VersionSuffix>
+    <Version>$(VersionPrefix).$(VersionSuffix)</Version>
+    <FileVersion>$(Version)</FileVersion>
+    <AssemblyVersion>$(VersionPrefix).*</AssemblyVersion>
+    <Deterministic>false</Deterministic>
+    
+    <!-- Windows 应用程序配置 -->
+    <ApplicationVisualStyles>true</ApplicationVisualStyles>
+    <ApplicationUseCompatibleTextRendering>false</ApplicationUseCompatibleTextRendering>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <ApplicationDefaultFont>Microsoft Sans Serif, 8.25pt</ApplicationDefaultFont>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3800.47" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3848-prerelease" />
+    <PackageReference Include="NewLife.Stardust" Version="3.7.2026.213-beta0008" />
     <PackageReference Include="System.Management" Version="10.0.3" />
   </ItemGroup>
 

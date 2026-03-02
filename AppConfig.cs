@@ -1,3 +1,4 @@
+using NewLife.Log;
 using System;
 using System.IO;
 using System.Text.Json;
@@ -34,7 +35,7 @@ namespace FUXADesktop
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading config: {ex.Message}");
+                XTrace.WriteLine($"Error loading config: {ex.Message}");
             }
             return new AppConfig();
         }
@@ -53,7 +54,7 @@ namespace FUXADesktop
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error saving config: {ex.Message}");
+                XTrace.WriteLine($"Error saving config: {ex.Message}");
             }
         }
     }
