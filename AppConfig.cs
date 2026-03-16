@@ -9,8 +9,8 @@ namespace FUXADesktop
     {
         public string AppName { get; set; } = "FUXA";
         public string WindowTitle { get; set; } = "FUXA - Process Visualization";
-        public string LogoPath { get; set; } = "fuxa-logo.ico";
-        public string VersionText { get; set; } = "v1.3.0";
+        public string LogoPath { get; set; } = "favicon.ico";
+        public string VersionText { get; set; } = "v1.5.0";
         public LoadingMessages LoadingMessages { get; set; } = new LoadingMessages();
         public WindowSettings WindowSettings { get; set; } = new WindowSettings();
         public Colors Colors { get; set; } = new Colors();

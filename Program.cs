@@ -6,6 +6,7 @@ using NewLife.Remoting.Clients;
 using Stardust;
 using Stardust.Monitors;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -212,9 +213,15 @@ namespace FUXADesktop
         private const int MAX_HEALTH_CHECK_FAILS = 3;
         #endregion
 
+        #region Performance Tracking
+        private System.Diagnostics.Stopwatch totalStopwatch = new System.Diagnostics.Stopwatch();
+        private System.Diagnostics.Stopwatch stageStopwatch = new System.Diagnostics.Stopwatch();
+        private Dictionary<string, long> stageDurations = new Dictionary<string, long>();
+        #endregion
+
         #region Stardust Monitoring
-        private StarFactory _factory;
-        private StarClient _client;
+
+        private int rotationAngle = 0;
         #endregion
 
         public MainForm()
@@ -266,7 +273,7 @@ namespace FUXADesktop
             loadingPanel = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = bgColor
+                BackColor = ParseColor(config.Colors.BackgroundColor, Color.FromArgb(245, 247, 250))
             };
 
             statusLabel = new Label
@@ -287,25 +294,73 @@ namespace FUXADesktop
                 BackColor = Color.Transparent
             };
 
+            // 不设置 Image 属性，避免双重渲染
+            // 而是在 Paint 事件中直接绘制
+            Image logoImage = null;
             try
             {
-                string logoPath = Path.Combine(Application.StartupPath, config.LogoPath);
-                if (File.Exists(logoPath))
+                // 尝试多种路径加载 Logo
+                string[] possiblePaths = new string[]
                 {
-                    if (logoPath.EndsWith(".ico", StringComparison.OrdinalIgnoreCase))
+                    Path.Combine(Application.StartupPath, config.LogoPath),
+                    Path.Combine(Application.StartupPath, "favicon.ico"),
+                    Path.Combine(Application.StartupPath, "fuxa-logo.ico")
+                };
+                
+                foreach (string logoPath in possiblePaths)
+                {
+                    if (File.Exists(logoPath))
                     {
-                        using (var icon = new Icon(logoPath))
+                        if (logoPath.EndsWith(".ico", StringComparison.OrdinalIgnoreCase))
                         {
-                            logoPictureBox.Image = icon.ToBitmap();
+                            using (var icon = new Icon(logoPath))
+                            {
+                                logoImage = icon.ToBitmap();
+                                break;
+                            }
                         }
-                    }
-                    else
-                    {
-                        logoPictureBox.Image = Image.FromFile(logoPath);
+                        else
+                        {
+                            logoImage = Image.FromFile(logoPath);
+                            break;
+                        }
                     }
                 }
             }
             catch { }
+            
+            // 修改 Paint 事件，使用本地 logoImage 变量
+            logoPictureBox.Paint += (s, e) =>
+            {
+                if (logoImage != null)
+                {
+                    // 保存当前状态
+                    var state = e.Graphics.Save();
+                    // 移动到中心点
+                    e.Graphics.TranslateTransform(logoPictureBox.Width / 2, logoPictureBox.Height / 2);
+                    // 旋转
+                    e.Graphics.RotateTransform(rotationAngle);
+                    // 绘制图片
+                    e.Graphics.DrawImage(logoImage, -logoPictureBox.Width / 2, -logoPictureBox.Height / 2, logoPictureBox.Width, logoPictureBox.Height);
+                    // 恢复状态
+                    e.Graphics.Restore(state);
+                }
+                else
+                {
+                    // 绘制默认的加载动画
+                    var state = e.Graphics.Save();
+                    e.Graphics.TranslateTransform(logoPictureBox.Width / 2, logoPictureBox.Height / 2);
+                    e.Graphics.RotateTransform(rotationAngle);
+                    
+                    // 绘制一个简单的加载图标
+                    using (var pen = new Pen(ParseColor(config.Colors.SpinnerColor, Color.FromArgb(0, 123, 255)), 4))
+                    {
+                        e.Graphics.DrawArc(pen, -40, -40, 80, 80, 0, 270);
+                    }
+                    
+                    e.Graphics.Restore(state);
+                }
+            };
 
             loadingPanel.Controls.Add(logoPictureBox);
 
@@ -375,6 +430,23 @@ namespace FUXADesktop
                 }
             };
             startupTimer.Start();
+            
+            // 添加加载动画
+            var animationTimer = new System.Windows.Forms.Timer();
+            animationTimer.Interval = 50;
+            animationTimer.Tick += (s, e) =>
+            {
+                rotationAngle += 5;
+                if (rotationAngle >= 360)
+                {
+                    rotationAngle = 0;
+                }
+                if (logoPictureBox != null)
+                {
+                    logoPictureBox.Invalidate();
+                }
+            };
+            animationTimer.Start();
         }
 
         private void InitializeEventHandlers()
@@ -459,6 +531,10 @@ namespace FUXADesktop
         {
             try
             {
+                // 启动总计时器
+                totalStopwatch.Start();
+                stageStopwatch.Start();
+                
                 loadingPanel.Visible = true;
                 webView.Visible = false;
 
@@ -467,22 +543,48 @@ namespace FUXADesktop
 
                 UpdateStatus(config.LoadingMessages.GetStartingServer(config.AppName));
 
-                bool serverStarted = await StartServerAsync();
+                // 记录配置加载完成时间
+                stageStopwatch.Stop();
+                stageDurations.Add("Config Load", stageStopwatch.ElapsedMilliseconds);
+                XTrace.WriteLine($"[PERF] Config Load: {stageStopwatch.ElapsedMilliseconds} ms");
+                
+                // 记录并行任务的开始时间
+                DateTime parallelStartTime = DateTime.Now;
+                
+                // 启动服务器（已优化）
+                var serverTask = StartServerAsync();
+                
+                // 立即开始初始化浏览器，不等待服务器完全启动
+                UpdateStatus(config.LoadingMessages.InitializingBrowser);
+                var browserTask = InitializeBrowserAsync();
+                
+                // 等待两个任务都完成
+                await Task.WhenAll(serverTask, browserTask);
+                
+                bool serverStarted = serverTask.Result;
                 if (!serverStarted)
                 {
                     MessageBox.Show($"Failed to start {config.AppName} server.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     Close();
                     return;
                 }
-
-                UpdateStatus(config.LoadingMessages.InitializingBrowser);
-                bool browserInitialized = await InitializeBrowserAsync();
+                
+                bool browserInitialized = browserTask.Result;
                 if (!browserInitialized)
                 {
                     MessageBox.Show($"Failed to initialize WebView2.\n\nPlease ensure WebView2 Runtime is installed.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     Close();
                     return;
                 }
+                
+                // 记录两个并行任务的总时间
+                long parallelDuration = (long)(DateTime.Now - parallelStartTime).TotalMilliseconds;
+                stageDurations.Add("Server Start", parallelDuration);
+                stageDurations.Add("Browser Init", parallelDuration);
+                XTrace.WriteLine($"[PERF] Server Start: {parallelDuration} ms (并行)");
+                XTrace.WriteLine($"[PERF] Browser Init: {parallelDuration} ms (并行)");
+                
+                stageStopwatch.Restart();
 
                 UpdateStatus(config.LoadingMessages.GetLoadingApp(config.AppName));
                 var tcs = new TaskCompletionSource<bool>();
@@ -531,6 +633,8 @@ namespace FUXADesktop
                 return;
             }
 
+            // 如果是应用程序启动的服务器，退出时总是停止服务器
+            // 因为不停止的话，有时候FUXA会不正常运行
             XTrace.WriteLine("[INFO] Stopping server and exiting application...");
 
             e.Cancel = true;
@@ -615,6 +719,11 @@ namespace FUXADesktop
             {
                 try
                 {
+                    // 记录页面加载时间
+                    stageStopwatch.Stop();
+                    stageDurations.Add("Page Load", stageStopwatch.ElapsedMilliseconds);
+                    XTrace.WriteLine($"[PERF] Page Load: {stageStopwatch.ElapsedMilliseconds} ms");
+                    
                     // 注入 CSS 来设置背景色，防止白屏
                     var bgColor = ParseColor(config.Colors.BackgroundColor, Color.FromArgb(245, 247, 250));
                     string css = $"body {{ background-color: #{bgColor.R:X2}{bgColor.G:X2}{bgColor.B:X2} !important; }} html {{ background-color: #{bgColor.R:X2}{bgColor.G:X2}{bgColor.B:X2} !important; }}";
@@ -629,6 +738,17 @@ namespace FUXADesktop
                     loadingPanel.Visible = false;
                     webView.Visible = true;
                     XTrace.WriteLine("[INFO] Page loaded successfully");
+                    
+                    // 记录总启动时间
+                    totalStopwatch.Stop();
+                    XTrace.WriteLine($"[PERF] Total Startup Time: {totalStopwatch.ElapsedMilliseconds} ms");
+                    
+                    // 输出所有阶段的性能统计
+                    XTrace.WriteLine("[PERF] Performance Summary:");
+                    foreach (var stage in stageDurations)
+                    {
+                        XTrace.WriteLine($"[PERF] - {stage.Key}: {stage.Value} ms ({(double)stage.Value / totalStopwatch.ElapsedMilliseconds * 100:F1}%)");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -688,16 +808,8 @@ namespace FUXADesktop
                 var uri = new Uri(serverUrl);
                 int port = uri.Port;
 
-                bool serverRunning = false;
-                for (int i = 0; i < 3; i++)
-                {
-                    if (await IsServerRunningAsync())
-                    {
-                        serverRunning = true;
-                        break;
-                    }
-                    await Task.Delay(1000);
-                }
+                // 快速检查服务器是否已经在运行（只检查1次，减少等待时间）
+                bool serverRunning = await IsServerRunningAsync();
 
                 if (!forceRestart && serverRunning)
                 {
@@ -735,12 +847,16 @@ namespace FUXADesktop
                     XTrace.WriteLine($"[INFO] Port {port} is in use, killing process {existingPid.Value}...");
                     UpdateStatus($"端口 {port} 被占用，正在停止占用端口的进程...");
                     KillProcess(existingPid.Value);
-                    await Task.Delay(3000);
+                    await Task.Delay(1000); // 减少等待时间
                 }
 
                 string appDir = Application.StartupPath;
-                string nodePath = Path.Combine(appDir, config.ServerSettings.NodePath);
-                string serverPath = Path.Combine(appDir, config.ServerSettings.ServerScript);
+                // 统一路径分隔符为 Windows 风格
+                string nodePath = Path.Combine(appDir, config.ServerSettings.NodePath.Replace('/', '\\'));
+                string serverPath = Path.Combine(appDir, config.ServerSettings.ServerScript.Replace('/', '\\'));
+                // 规范化路径
+                nodePath = Path.GetFullPath(nodePath);
+                serverPath = Path.GetFullPath(serverPath);
 
                 if (!File.Exists(nodePath))
                 {
@@ -770,6 +886,7 @@ namespace FUXADesktop
                 psi.RedirectStandardOutput = true;
                 psi.RedirectStandardError = true;
                 psi.EnvironmentVariables["PATH"] = bundledNodeDir + ";" + Environment.GetEnvironmentVariable("PATH");
+                psi.EnvironmentVariables["NODE_ENV"] = "production"; // 设置生产环境，加速Node.js启动
 
                 serverProcess.OutputDataReceived += (s, e) =>
                 {
@@ -799,13 +916,15 @@ namespace FUXADesktop
 
                 XTrace.WriteLine("[INFO] Waiting for server to start...");
 
-                for (int i = 0; i < 300; i++)
+                DateTime startTime = DateTime.Now;
+                // 优化服务器启动检测逻辑
+                for (int i = 0; i < 200; i++) // 减少总等待时间（从60秒到20秒）
                 {
-                    await Task.Delay(200);
+                    await Task.Delay(100); // 减少每次等待时间，提高响应速度
 
-                    if (i % 25 == 0 && i > 0)
+                    if (i % 50 == 0 && i > 0) // 减少状态更新频率
                     {
-                        int seconds = i / 5;
+                        int seconds = (int)(DateTime.Now - startTime).TotalSeconds;
                         UpdateStatus($"服务器启动中... ({seconds}秒)");
                     }
 
@@ -822,7 +941,7 @@ namespace FUXADesktop
                     {
                         if (await IsServerRunningAsync())
                         {
-                            int totalSeconds = i * 200 / 1000;
+                            int totalSeconds = (int)(DateTime.Now - startTime).TotalSeconds;
                             XTrace.WriteLine($"[INFO] Server started successfully after {totalSeconds} seconds");
                             UpdateStatus($"服务器启动成功 ({totalSeconds}秒)");
                             serverStartTime = DateTime.Now;
@@ -840,7 +959,7 @@ namespace FUXADesktop
                     catch { }
                 }
 
-                string timeoutMsg = $"Server failed to start within 60 seconds.\n\nOutput:\n{serverOutputLog}\n\nErrors:\n{serverErrorLog}";
+                string timeoutMsg = $"Server failed to start within 20 seconds.\n\nOutput:\n{serverOutputLog}\n\nErrors:\n{serverErrorLog}";
                 XTrace.WriteLine(timeoutMsg);
                 UpdateStatus("服务器启动超时");
                 MessageBox.Show(timeoutMsg, "Server Timeout", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -1092,59 +1211,37 @@ namespace FUXADesktop
         #endregion
 
         #region Stardust Monitoring
-        private void StartClient()
+        static StarFactory _factory;
+        static StarClient _Client;
+        private static void StartClient()
         {
-            // 延迟 60 分钟后启动 Stardust 监控，避免应用程序启动时 CMD 闪现
-            Task.Run(async () =>
+            var set = ClientSetting.Current;
+            var server = set.Server;
+            if (server.IsNullOrEmpty()) return;
+
+            XTrace.WriteLine("初始化服务端地址：{0}", server);
+
+            _factory = new StarFactory(server, "FUXA客户端", null)
             {
-                XTrace.WriteLine("[Stardust] 将在 60 分钟后启动监控...");
-                await Task.Delay(TimeSpan.FromMinutes(10));
+                Log = XTrace.Log,
+            };
 
-                try
-                {
-                    var set = ClientSetting.Current;
-                    var server = set.Server;
-                    if (server.IsNullOrEmpty())
-                    {
-                        XTrace.WriteLine("[Stardust] 未配置服务器地址，监控已禁用");
-                        return;
-                    }
+            var client = new StarClient(server)
+            {
+                Code = set.Code,
+                Secret = set.Secret,
+                ProductCode = _factory.AppId,
+                Setting = set,
 
-                    XTrace.WriteLine("[Stardust] 初始化服务端地址：{0}", server);
+                Tracer = _factory.Tracer,
+                Log = XTrace.Log,
+            };
 
-                    XTrace.WriteLine("[Stardust] 开始创建 StarFactory...");
-                    _factory = new StarFactory(server, null, null)
-                    {
-                        Log = XTrace.Log,
-                        AppId = "FuxaWinform"
-                    };
-                    XTrace.WriteLine("[Stardust] StarFactory 创建完成");
+            client.Open();
 
-                    XTrace.WriteLine("[Stardust] 开始创建 StarClient...");
-                    var client = new StarClient(server)
-                    {
-                        Code = set.Code,
-                        Secret = set.Secret,
-                        ProductCode = _factory.AppId,
-                        Setting = set,
-                        Tracer = _factory.Tracer,
-                        Log = XTrace.Log,
-                    };
-                    XTrace.WriteLine("[Stardust] StarClient 创建完成");
+            Host.RegisterExit(() => client.Logout("ApplicationExit"));
 
-                    XTrace.WriteLine("[Stardust] 开始调用 client.Open()...");
-                    client.Open();
-                    XTrace.WriteLine("[Stardust] client.Open() 调用完成");
-
-                    _client = client;
-
-                    XTrace.WriteLine($"[Stardust] 已启用监控，服务器: {server}");
-                }
-                catch (Exception ex)
-                {
-                    XTrace.Log.Error("初始化星尘监控失败: {0}", ex.Message);
-                }
-            });
+            _Client = client;
         }
         #endregion
 

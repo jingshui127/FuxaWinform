@@ -150,7 +150,8 @@ Microsoft.WindowsDesktop.App 10.0.3 [C:\Program Files\dotnet\shared\Microsoft.Wi
     "serverScript": "server/main.js",
     "port": 1881,
     "host": "localhost",
-    "stopServerOnExit": true
+    "stopServerOnExit": true,
+    "askBeforeStopServer": false
   },
   "loadingMessages": {
     "startingServer": "正在启动 {AppName} 服务器...",
@@ -161,21 +162,26 @@ Microsoft.WindowsDesktop.App 10.0.3 [C:\Program Files\dotnet\shared\Microsoft.Wi
   },
   "colors": {
     "backgroundColor": "#F5F7FA",
+    "backgroundColor2": "#EBF0F5",
     "textColor": "#3C3C3C",
+    "versionColor": "#969696",
     "spinnerColor": "#007BFF",
-    "versionColor": "#969696"
+    "spinnerBackgroundColor": "#DCDCDC"
   }
 }
 ```
 
 ### 退出选项配置
 
-应用程序会自动判断是否停止服务器：
+通过 `serverSettings` 配置可以控制退出行为：
 
-| 情况 | 行为 |
-|------|------|
-| **接管服务器** | 检测到服务器已运行时自动接管，关闭应用时**不停止**服务器 |
-| **启动服务器** | 应用启动了新服务器，关闭应用时**自动停止**服务器 |
+| 配置组合 | 行为 |
+|---------|------|
+| `askBeforeStopServer: true` | 关闭窗口时显示确认对话框，用户可选择「是/否/取消」 |
+| `stopServerOnExit: true`, `askBeforeStopServer: false` | 退出时自动停止服务器（默认） |
+| `stopServerOnExit: false`, `askBeforeStopServer: false` | 退出时不停止服务器，保持后台运行 |
+
+**接管服务器**：检测到服务器已运行时自动接管，关闭应用时**不停止**服务器
 
 ### 服务器接管功能
 
@@ -216,7 +222,7 @@ Microsoft.WindowsDesktop.App 10.0.3 [C:\Program Files\dotnet\shared\Microsoft.Wi
 FuxaWinform/
 ├── FuxaWinform.exe          # 主程序入口
 ├── app-config.json          # 应用程序配置文件
-├── fuxa-logo.ico           # 应用程序图标
+├── favicon.ico             # 应用程序图标
 ├── nodejs/                 # 内置 Node.js 运行时
 │   └── node.exe
 ├── server/                 # FUXA 服务器代码
@@ -224,7 +230,7 @@ FuxaWinform/
 │   └── ...
 ├── client/                 # FUXA 前端代码
 │   └── dist/
-├── logs/                   # 日志文件目录
+├── Log/                    # 日志文件目录
 └── _appdata/              # FUXA 数据存储目录
     └── settings.js
 ```
@@ -305,6 +311,50 @@ catch (Exception ex)
 ```
 
 ## 📝 更新日志
+
+### v1.4.0 (2026-03-16)
+
+#### ⚡ 性能优化
+- **服务器启动加速** - 大幅提升服务器启动速度
+  - 减少服务器运行检查次数（从3次到1次）
+  - 缩短端口冲突处理时间（从3秒到1秒）
+  - 添加 `NODE_ENV=production` 环境变量，加速 Node.js 模块加载
+  - 优化服务器启动检测逻辑（减少等待时间和频率）
+- **并行执行优化** - 智能并行化服务器启动和浏览器初始化
+  - 在主线程上同时启动两个异步任务
+  - 避免跨线程问题，保持应用稳定性
+  - 充分利用系统资源，减少总启动时间
+
+#### ✨ 新功能
+- **性能监控增强** - 添加详细的性能计时功能
+  - 记录每个启动阶段的时间消耗
+  - 提供性能摘要报告，便于分析优化效果
+
+#### 🔧 代码优化
+- **启动流程重构** - 优化应用启动流程，提高效率
+- **状态更新优化** - 减少不必要的状态更新，提升响应速度
+
+### v1.3.2 (2026-03-02)
+
+#### ✨ 新功能
+- **Logo 加载优化** - 支持多种 Logo 路径尝试
+  - 优先使用 `favicon.ico` 作为默认图标
+  - 兼容旧版 `fuxa-logo.ico`
+  - Logo 加载失败时显示默认旋转图标
+
+#### 🐛 问题修复
+- **双重 Logo 显示** - 修复启动界面显示两个 Logo 的问题
+  - 移除重复的 Paint 事件处理程序
+  - 优化 Logo 渲染逻辑
+
+#### 🔧 代码优化
+- **日志目录统一** - 将日志目录从 `logs/` 改为 `Log/`，与 NewLife 框架一致
+- **退出选项实现** - 完整实现 `stopServerOnExit` 和 `askBeforeStopServer` 配置功能
+  - 支持退出时询问用户
+  - 支持保持服务器后台运行
+- **启动界面优化** - 改进启动界面的视觉效果
+  - 平滑的旋转动画
+  - 清晰的状态信息显示
 
 ### v1.3.1 (2026-03-01)
 
